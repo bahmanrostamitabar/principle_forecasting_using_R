@@ -1,0 +1,139 @@
+---
+title: "Specify , train models and produce forecasts"
+execute:
+  echo: false
+format: html
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+library(fpp3)
+library(lubridate)
+
+arrival_daily_keys <- read_rds("data/arrival_daily_keys.rds")
+arrival_hourly_keys <- read_rds("data/arrival_hourly_keys.rds")
+arrival_half_hourly_keys <- read_rds("data/arrival_half_hourly_keys.rds")
+arrival_hourly <- read_rds("data/arrival_hourly.rds")
+arrival_daily <- read_rds("data/arrival_daily.rds")
+```
+
+# Lab session 4: specify and train models
+
+## Specify models and estimate parameters in fable
+
+We start with simple benchmark method: average, naive, snaive
+
+We specify models using the function corresponding to the name of the forecasting model. We use a formula (response ~ terms) to specify methods and estimate parameters using `model()` function. If there is no term for the method (e.g. `MEAN(arrival)`), we ignore the `~` and terms:
+
+Now, run the following R chunk:
+
+```{r}
+#| label: fit-models
+arrival_fit <- arrival_daily |>
+  ???(
+    mean = ???(arrival),#total average
+    naive = ???(arrival),#naive
+    snaive = ???(arrival),#seasonal naive
+    exponential_smoothing = ???(arrival),#exponential smoothing naive
+    arima = ???(arrival),#ARIMA,
+    regression = ???(arrival),#regression
+  )
+```
+
+You can observe `arrival_fit` object by selecting it and run.
+
+`arrival_fit` is called `mable`, it is model table, each row belongs to one time series and each column to a model
+
+## Extract information from `mable`
+
+Now we can extract information or look into details of the trained models(mable) using `tidy()`, `report()`, `glance()` and `augment()`
+
+These function would reveal more information when used with models with parameters such as exponential smoothing (ETS) and ARIMA:
+
+```{r}
+#| label: extract-fitting-model
+arrival_fit |> ???() 
+arrival_fit |> ???() 
+arrival_fit |> select(snaive) |> ???() 
+```
+
+You can extract fitted values and residuals for each model using `augment()` .
+You can then use filter() to extract information for any model and select  `.fitted` or `.resid`
+
+```{r}
+#| label: use-augment
+arrival_fit |> ???() 
+arrival_fit |> ???() |> filter(.model=="snaive") |> ???(.fitted)#select fitted values
+arrival_fit |> augment() |> filter(.model=="snaive") |> ???(.resid)# select residuals
+```
+
+We can use the `components()` function to observe the values corresponding to different components of a model, for instance if you look at the fitted ETS model, you can observe estimated values for level, trend, seasonal equations in ETS framework. Each column corresponds to one equation:
+
+```{r observe-component}
+#| label: component
+arrival_fit |> ???() |> filter(.model==???) %>% components()
+```
+
+## Produce forecast
+
+In order to produce forecasts, we pass the mable object, `arrival_fit`, to the `forecast()` function:
+
+```{r}
+#| label: forecast-models
+arrival_fc <- arrival_fit |> ???(???)
+```
+
+Forecast function needs the forecast horizon as argument, h="42 days" or h=42. If you have predictor in your model (maybe in Regression), you need to replace `h=` with `new_data=`.
+
+This will generate both point forecast and a distribution of forecasts based on Normal distribution.
+
+We can also plot generated forecasts using models, if you don't want to plot prediction intervals, then use `level=NULL`
+
+```{r}
+#| label: plot-forecast
+??? |> 
+  autoplot(???, level=NULL)
+```
+
+It is hard to see the forecast lines, so we plot only a part of the time series data. `filter_index()` is used for this:
+
+```{r }
+#| label: plot-forecast-filter
+arrival_fc |> autoplot(filter_index(arrival_daily,"2016"~.), level=NULL)
+```
+
+## Produce probabilistic forecast using bootstrapping
+
+Most time series models produce normally distributed forecasts — that is, we assume that the distribution of possible future values follows a normal distribution. 
+
+When a normal distribution for the residuals is an unreasonable assumption, one alternative is to use bootstrapping, which only assumes that the residuals are uncorrelated with constant variance. You can use `generate()` function to generate futures using bootstrapping:
+
+
+```{r}
+#| label: bootstrap-generate
+fit <- arrival_daily |>
+  model(NAIVE(arrival))
+sim <- fit |> generate(h = 42, times = 5, bootstrap = TRUE)
+sim
+```
+
+you can also use `forecast()` directly to generate futures:
+
+```{r}
+#| label: bootstrap-forecast
+fit |>
+  forecast(h = 42, bootstrap = TRUE, times = 5)
+```
+
+# Extract prediction intervals
+
+Use `hilo()` to extract prediction intervals for any coverage probability you are interested in. To be able to see values for lower bound and upper bound in separate columns, you need to unpack the prediction intervals using `unpack_hilo()`:
+
+```{r}
+#| label: prediction-interval-extract
+## getting prediction intervals
+arrival_fc |> hilo(level = ???) |> ???(???)
+```
+

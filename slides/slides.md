@@ -1,0 +1,1 @@
+This folder contains slides used in the training

@@ -1,0 +1,201 @@
+---
+title: "Specify , train models and produce forecasts"
+execute:
+  echo: false
+format: html
+---
+
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+library(fpp3)
+library(lubridate)
+
+arrival_daily_keys <- read_rds("data/arrival_daily_keys.rds")
+arrival_hourly_keys <- read_rds("data/arrival_hourly_keys.rds")
+arrival_half_hourly_keys <- read_rds("data/arrival_half_hourly_keys.rds")
+arrival_hourly <- read_rds("data/arrival_hourly.rds")
+arrival_daily <- read_rds("data/arrival_daily.rds")
+```
+
+# Lab session 5: Evaluate and report forecast accuracy
+
+In a typical forecasting task, you compare multiple forecasting models and choose one that provides more accuracy. The most robust way to choose the best forecasting model is to use time series cross validation.
+
+## Time series cross validation
+
+This is also called rolling forecast or rolling origin:
+You can also reflect on the following questions:
+- Why do we use TSCV? you can read more here: https://otexts.com/fpp3/tscv.html
+- How do we do TSCV in R? Which steps to follow?
+      1. split data using `filter_index()`
+      2. create different time series (different origins)
+      2. model each time series, 
+      3. forecast for each series 
+
+let's see how we do it in R:
+
+1. split data
+
+We initially split the data into test and train, the size of test set equals the forecast horizon, we use this for the purpose of visualisating the forecasts, not deciding which model is the best(more accurate)
+
+```{r}
+#| label: split
+f_horizon <- 42# forecast horizon
+percentage_test <- 0.2 #20% of time series for test set
+
+test <- arrival_daily |> 
+  filter_index(as.character(max(arrival_daily$date)-round(percentage_test*length(unique(arrival_daily$date)))+1) ~ .)
+
+train <- arrival_daily |>
+  filter_index(. ~ as.character(max(arrival_daily$date)-(round(percentage_test*length(unique(arrival_daily$date))))))
+```
+
+2. Use `stretch_tsibble()` to Create different timeseries (i.e different id)
+
+We apply time series cross validation on the train data. We first start with an initial training size (.init = ) and then increase the size of the previous time series by adding more new observation(.step=) to create a new time series, we continue creating these timeseries until the number of observation left at the end of timeseries equals to the forecast horizon, we stop there.
+
+```{r}
+#| label: rolling-origin-series
+train_tscv <- arrival_daily |> 
+  filter_index(. ~ as.character(max(arrival_daily$date)-(f_horizon))) |>
+  stretch_tsibble(.init = length(unique(train$date)), .step = 1) # split data into different time series (i.e. origin or id) with increasing size
+```
+
+`.init` is the size of initial time series, `.step` is the increment step $\geq1$, this can correspond to the forecasting frequency, how often you generate the forecast. if .step=1 in a daily time series, it means we generate forecasts very day for the forecast horizon.
+
+> How many time series(samples) we create with this process? what is the new variable .id?
+
+As you can see we have created many time series (samples), this means different situations where forecasting models are evaluated, so if any model performs well for all these situations, we are feel confident to use it for producing forecasts in the future.
+
+>What is the purpose of using `filter_index(. ~ as.character(max(arrival_daily$date)-(f_horizon)))`? Remember , we have to stop creating rolling origin series when we have only 42 observations left (equal to forecast horizon)
+
+
+3. train models for each time series (for each value of `.id` variable)
+
+```{r}
+#| label: train-model
+ae_model_tscv <- ??? |>
+???(
+    mean = ???(arrival),#total average
+    naive = ???(arrival),#naive
+    snaive = ???(arrival),#seasonal naive
+    exponential_smoothing = ???(arrival),#exponential smoothing naive
+    arima = ???(arrival),#ARIMA,
+    regression = ???(arrival),#regression
+  )
+```
+
+You can observe `ae_model_tscv` by selecting (just double click on it) and running it, this is our model table (mable). We get one column for each forecasting model that is applied to each time series (rows).  inside each cell(e.g.<S3: lst_mdl>) we have the fitted(trained) model with its components ad parameters.
+
+You can also use the functions introduced above to investigate fitted models to each .id:
+
+```{r}
+#| label: extract-info-tscv
+ae_model_tscv |> ???()
+ae_model_tscv |> filter(.id==720) |> glance() # if you want to observe one specific .id
+ae_model_tscv |> ???() 
+```
+
+4. Forecast for each series
+
+Now, we want to produce forecast for 42 days that is applied to all time series created using TSCV:
+
+```{r}
+#| label: fcst-series
+extract-info-tscv
+ae_fcst_tscv <- ??? |> ???(???)
+ae_fcst_tscv #observe ae_fcst_tscv
+```
+
+This will create a forecast table or `fable` object. Observe it and look at the columns.
+What is `arrival` and `.mean` in ae_fcst_tscv?
+
+in `ae_fcst_tscv` (a fable object) each .id is representing the forecast for each series.
+
+## Evaluate forecast accuracy
+
+You calculate the point forecast accuracy using `accuracy()` function. `accuracy()` needs both the forecast object(fable) and actual data.
+
+```{r}
+#| label: overall accuracy
+fc_accuracy <- ae_fcst_tscv |> ???(???) 
+
+fc_accuracy |> ???(.model, RMSE, MAE)
+```
+
+This will provide a summary of multiple accuracy measures. The result is summarised automatically across all series (.id) using a simple average.
+
+Now let's see how we can get the accuracy measure for each .id separately instead of averaging across all of them. To do this, you need to use an aditional argument in accuracy(by=):
+
+```{r label, options}
+#| label: accuracy-id
+fc_accuracy_by_id <- ??? |>
+  ???(train, by = ???)
+```
+
+We can now create some insightful visualisations:
+
+```{r label, options}
+#| label: visualise-accuracy
+fc_accuracy_density <- fc_accuracy_by_id |> select(.id,.model,RMSE) 
+  ggplot(data=fc_accuracy_density, aes(RMSE))+
+    geom_density(aes(fill=factor(.model)), alpha=.5)
+
+fc_accuracy_boxplot <- fc_accuracy_1 |> select(.id,.model,RMSE) 
+ggplot(data=fc_accuracy_boxplot, aes(RMSE))+
+    geom_boxplot(aes(fill=factor(.model)), alpha=.5)
+```
+
+What if you want to get the accuracy measure for each model and each horizon (h=1, 2,...,42)?
+
+In fable we don't get automatically a column that corresponds to forecast horizon(h=1,2,3,..., 42). If this is something you are interested in, you can do it yourself, let's first observe the first 50 observations to see the difference later:
+
+```{r}
+#| label: view_h
+View(ae_fcst_tscv[1:50,])
+```
+
+We first need to group by `id` and `.model` and then create a new variable called `h` and assign row_number() to it( you can type ?row_number in your Console to see what this function does, it simply returns the number of row)
+
+```{r}
+#| label: create-h
+ae_fc <- ??? |> 
+  group_by(???,???) |> 
+  mutate(h=???()) |> ungroup()
+View(ae_fc[1:50,])# view the first 43 rows of ae_fc observe h
+```
+
+Now check rows from 42 to 50 to see the difference.
+
+To calculate the accuracy measures for each horizon and model, follow this:
+
+```{r}
+#| label: accuracy-h
+fc_accuracy <- ae_fc |> 
+accuracy(train, by = ???)
+tail(fc_accuracy)
+```
+
+you can select any accuracy measure you want using `select()`, alternatively you can calculate them
+
+```{r}
+#| label: select-accuracy
+#only point forecast
+ ae_fcst_tscv |>
+  accuracy(train) |> select(.model, RMSE, MAE)
+```
+
+You can specify which accuracy measure you want using `measures = list()`
+
+```{r}
+#| label: all-accuracy-measures
+#point_accuracy_measures, interval_accuracy_measures, o and distribution_accuracy_measures)
+ae_fcst_tscv |> 
+  accuracy(train,
+           measures = list(???,
+                           ???
+)) 
+```

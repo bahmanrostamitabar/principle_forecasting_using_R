@@ -1,0 +1,101 @@
+---
+title: "Time series features"
+execute:
+  echo: false
+format: html
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(fpp3)
+library(tidyverse)
+
+arrival_daily_keys <- read_rds("data/arrival_daily_keys.rds")
+arrival_hourly_keys <- read_rds("data/arrival_hourly_keys.rds")
+arrival_half_hourly_keys <- read_rds("data/arrival_half_hourly_keys.rds")
+arrival_hourly <- read_rds("data/arrival_hourly.rds")
+arrival_daily <- read_rds("data/arrival_daily.rds")
+```
+
+# Lab 3: time series features
+
+## ED arrival data
+
+This is super useful when you deal with many time series.
+
+For the daily admissions time series with keys (with gender, injury), extract the strength of trend and seasonality
+
+  *Do you see any useful insight?*
+
+```{r}
+#| label: ed-features
+arrival_daily_keys |>
+  features(arrival,feature_set(pkgs = "feasts"))
+```
+
+## Pharmaceutical sales data
+
+Let's know look at a bigger dataset.We explore the sales (demand) for Pharmaceutical products in Australia:
+
+```{r}
+#| label: PBS-features
+## Compute features
+PBS_feast <- PBS |>
+  features(???, feature_set(pkgs = "feasts")) 
+
+PBS_features <- PBS_feast |> 
+  select(-...26) |> drop_na()
+```
+ 
+
+Write r codes to answer the following questions:
+
+1. create  a scatterplot to show the strength of trend and seasonality features: 
+
+```{r}
+#| label: trend-seasonality
+ggplot(data = PBS_features, )
+```
+
+2. Using a feature that shows how difficult/easy is to forecast a time series and create a histogram to see the distribution of forecastability of the PBS data:
+
+```{r}
+#| label: entropy
+ggplot(data = PBS_features, )
+```
+
+
+we can only look at the handful number of features using visualizations, you can also use dimensional reduction techniques such as Principal Component Analysis:
+
+Use a feature-based approach to look for outlying series in `PBS` data set. use ?PBS to know more about PBS data.
+
+What is unusual about the series you identify as outliers?
+
+```{r}
+#| label: pca
+library(broom)
+
+## Compute principal components
+PBS_prcomp <- PBS_features |>
+  select(-Concession, -Type, -ATC1, -ATC2) |>
+  prcomp(scale = TRUE) |>
+  augment(PBS_features)
+
+## Plot the first two components
+PBS_prcomp |>
+  ggplot(aes(x = ???, y = ???)) +
+  geom_point()
+
+## Pull out most unusual series from first principal component
+outliers <- PBS_prcomp |>
+  filter(.fittedPC1 > 7)
+outliers
+
+## Visualise the unusual series
+PBS |>
+  semi_join(outliers, by = c("Concession", "Type", "ATC1", "ATC2")) |>
+  autoplot(Cost) +
+  facet_grid(vars(Concession, Type, ATC1, ATC2)) +
+  labs(title = "Outlying time series in PC space")
+```
